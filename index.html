@@ -21,6 +21,13 @@
             user-select: none;
         }
 
+        /* BUG FIX: Restores draggable functionality to sliders in all browsers */
+        input[type="range"] {
+            user-select: auto;
+            -webkit-user-select: auto;
+            -moz-user-select: auto;
+        }
+
         body, html {
             width: 100%;
             height: 100%;
@@ -39,7 +46,7 @@
             z-index: 1;
         }
 
-        /* UI Overlay Wrapper - Adjusted for wider central viewport */
+        /* UI Overlay Wrapper */
         #ui-layer {
             position: absolute;
             top: 0;
@@ -56,7 +63,8 @@
             gap: 15px;
         }
 
-        #ui-layer * {
+        /* BUG FIX: Only apply pointer-events to immediate grid children to prevent invisible layer blocking */
+        #ui-layer > * {
             pointer-events: auto;
         }
 
@@ -178,7 +186,7 @@
             outline: none;
             cursor: pointer;
             position: relative;
-            z-index: 2;
+            z-index: 5; /* BUG FIX: Boosted z-index to ensure it is always clickable */
         }
 
         .lever-slider::-webkit-slider-thumb {
@@ -197,7 +205,7 @@
             background: rgba(241, 196, 15, 0.2);
             left: 0;
             top: 0;
-            pointer-events: none;
+            pointer-events: none !important; /* BUG FIX: Strictly prevent event interception */
             z-index: 1;
         }
 
@@ -544,6 +552,10 @@
                 <button class="btn-magnet" id="btn-magnet-toggle">Engage Magnet</button>
             </div>
 
+<button class="btn-magnet" id="btn-restart-stage" style="background: linear-gradient(135deg, #d35400 0%, #a83f00 100%); border-color: #e67e22; margin-top: 10px;">
+    Restart Stage
+</button>
+
             <h3 class="panel-title">Telemetry & Systems Diagnostics</h3>
             <div id="systems-log">
                 <div class="log-entry">System ready. Establish actuator coupling links.</div>
@@ -582,7 +594,7 @@
                 targetPos: { x: 14, y: 4, z: 8 },
                 targetRadius: 1.8,
                 wind: 0,
-                obstacle: { pos: { x: 14, y: 2, z: 8 }, size: { w: 2, h: 4, d: 2 } } // Corrected structural node anchor
+                obstacle: { pos: { x: 14, y: 2, z: 8 }, size: { w: 2, h: 4, d: 2 } } 
             },
             {
                 id: 3,
@@ -612,10 +624,10 @@
                 desc: "Ultimate Operator Test. Deposit an unstable core directly onto the pinnacle of the central structural tower superstructure during dangerous variable crosswind gusts.",
                 cargoPos: { x: -15, y: 1, z: 15 },
                 cargoSize: { w: 2, h: 2, d: 2 },
-                targetPos: { x: 4, y: 12, z: 0 }, // Offset coordinate so trolley max bounds correctly interact
+                targetPos: { x: 4, y: 12, z: 0 }, 
                 targetRadius: 1.2,
                 wind: 24.8,
-                obstacle: { pos: { x: 4, y: 6, z: 0 }, size: { w: 3, h: 12, d: 3 } } // Hard-rendered podium geometry
+                obstacle: { pos: { x: 4, y: 6, z: 0 }, size: { w: 3, h: 12, d: 3 } } 
             }
         ];
 
@@ -848,11 +860,10 @@
             targetFill.rotation.x = -Math.PI / 2;
             targetZoneMesh.add(targetFill);
 
-            // Refactored Obstacle Generator
             if (spec.obstacle) {
                 const obsGeo = new THREE.BoxGeometry(spec.obstacle.size.w, spec.obstacle.size.h, spec.obstacle.size.d);
                 const obsMat = new THREE.MeshStandardMaterial({ color: 0x485460, roughness: 0.9 });
-                if(idx === 4) obsMat.color.setHex(0x2c3e50); // Podium tower specific shading
+                if(idx === 4) obsMat.color.setHex(0x2c3e50); 
                 
                 activeObstacleMesh = new THREE.Mesh(obsGeo, obsMat);
                 activeObstacleMesh.position.set(spec.obstacle.pos.x, spec.obstacle.pos.y, spec.obstacle.pos.z);
@@ -885,13 +896,29 @@
                 document.getElementById('fill-trolley').style.width = `${((stateTrolley - 2) / 26) * 100}%`;
             });
 
-            // Re-mapped hoist boundaries matrix slider
             const inputHoist = document.getElementById('input-hoist');
             inputHoist.addEventListener('input', (e) => {
                 stateHoist = parseFloat(e.target.value);
                 document.getElementById('val-hoist').innerText = `${stateHoist.toFixed(1)}m`;
                 document.getElementById('fill-hoist').style.width = `${((stateHoist - 1) / 25) * 100}%`;
             });
+
+const btnRestart = document.getElementById('btn-restart-stage');
+btnRestart.addEventListener('click', () => {
+    // Reloads the current stage, resetting cargo position, UI, and magnet state
+    loadChallengeStage(currentStageIdx);
+    appendLog("MANUAL OVERRIDE: Stage parameters reset by operator.");
+    
+    // Reset mechanical levers to default (optional, but good for UX)
+    document.getElementById('input-slew').value = 0;
+    document.getElementById('input-trolley').value = 5;
+    document.getElementById('input-hoist').value = 10;
+    
+    // Trigger the input events to update the 3D crane instantly
+    document.getElementById('input-slew').dispatchEvent(new Event('input'));
+    document.getElementById('input-trolley').dispatchEvent(new Event('input'));
+    document.getElementById('input-hoist').dispatchEvent(new Event('input'));
+});
 
             const btnMagnet = document.getElementById('btn-magnet-toggle');
             btnMagnet.addEventListener('click', () => {
@@ -1003,7 +1030,6 @@
             let dz = cargoPos.z - spec.targetPos.z;
             let distanceToTarget = Math.sqrt(dx*dx + dz*dz);
 
-            // Dynamically scale delta height validations removing hardcoded phase locks
             let exactTargetHeight = spec.targetPos.y;
             let elevationDelta = Math.abs(cargoPos.y - (exactTargetHeight + spec.cargoSize.h / 2));
 
@@ -1075,7 +1101,6 @@
             } else {
                 let targetFloorHeight = spec.cargoSize.h / 2;
                 
-                // Unified dynamic obstacle drop tracking logic
                 if (spec.obstacle) {
                     let obs = spec.obstacle;
                     let hw = obs.size.w / 2;
@@ -1085,7 +1110,6 @@
                     }
                 }
 
-                // Unified dynamic target bounds drop tracking
                 let dx = cargoMesh.position.x - spec.targetPos.x;
                 let dz = cargoMesh.position.z - spec.targetPos.z;
                 if (Math.sqrt(dx*dx + dz*dz) <= spec.targetRadius) {
@@ -1119,12 +1143,11 @@
             const obsBox = new THREE.Box3().setFromObject(activeObstacleMesh);
 
             if (cargoBox.intersectsBox(obsBox)) {
-                // Determine whether it's safely resting on top without breaking bounding box intersections
                 const cargoBottom = cargoMesh.position.y - (spec.cargoSize.h / 2);
                 const obsTop = spec.obstacle.pos.y + (spec.obstacle.size.h / 2);
                 
                 if (cargoBottom >= obsTop - 0.2) {
-                    return; // No fault, successfully rests on structural pillar support matrices
+                    return; 
                 }
                 
                 appendLog("WARNING: Structural Collision Detected. Safety Interlock Circuit Active.");
@@ -1138,7 +1161,6 @@
                     btnMagnet.innerText = "Engage Magnet";
                     magnetGlowMat.color.setHex(0xff0000);
 
-                    // Physical bump deterrence vectors offsets directly safely matrices variables properties
                     cargoMesh.position.y += 0.2;
                     cargoMesh.position.x += (cargoMesh.position.x > spec.obstacle.pos.x ? 0.8 : -0.8);
                     cargoMesh.position.z += (cargoMesh.position.z > spec.obstacle.pos.z ? 0.8 : -0.8);
