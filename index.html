@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Production-Grade 3D Crane Simulator</title>
+    <style>
+        :root {
+            --safety-yellow: #f1c40f;
+            --dark-industrial: #1e272e;
+            --panel-bg: rgba(30, 39, 46, 0.85);
+            --neon-blue: #00d2d3;
+            --neon-green: #1dd1a1;
+            --neon-red: #ff6b6b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #050505;
+            color: #fff;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* UI Overlay Wrapper - Adjusted for wider central viewport */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            max-height: 100vh;
+            z-index: 10;
+            pointer-events: none;
+            display: grid;
+            grid-template-columns: 280px 1fr 310px;
+            grid-template-rows: 55px minmax(0, 1fr);
+            padding: 15px;
+            gap: 15px;
+        }
+
+        #ui-layer * {
+            pointer-events: auto;
+        }
+
+        /* Header / Telemetry */
+        header {
+            grid-column: 1 / -1;
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            height: 100%;
+        }
+
+        .logo {
+            font-weight: 800;
+            font-size: 1.1rem;
+            color: var(--safety-yellow);
+            letter-spacing: 2px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo::before {
+            content: '';
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: var(--safety-yellow);
+            clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+        }
+
+        .telemetry-deck {
+            display: flex;
+            gap: 20px;
+        }
+
+        .telemetry-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        .telemetry-label {
+            font-size: 0.7rem;
+            color: #888;
+            text-transform: uppercase;
+        }
+
+        .telemetry-value {
+            font-family: monospace;
+            font-size: 1rem;
+            font-weight: bold;
+            color: var(--neon-blue);
+        }
+
+        /* Left Control Panel (Levers) */
+        #control-panel {
+            grid-column: 1;
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            overflow-y: auto;
+        }
+
+        .panel-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #aaa;
+            border-bottom: 2px solid var(--safety-yellow);
+            padding-bottom: 4px;
+            margin-bottom: 2px;
+            flex-shrink: 0;
+        }
+
+        .lever-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .lever-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .lever-wrap {
+            position: relative;
+            width: 100%;
+            height: 32px;
+            background: #111;
+            border-radius: 16px;
+            border: 1px solid #333;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+        }
+
+        .lever-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            outline: none;
+            cursor: pointer;
+            position: relative;
+            z-index: 2;
+        }
+
+        .lever-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 34px;
+            height: 28px;
+            background: radial-gradient(circle, #666 0%, #222 100%);
+            border: 2px solid var(--safety-yellow);
+            border-radius: 6px;
+            box-shadow: 0 0 8px rgba(0,0,0,0.8);
+        }
+
+        .lever-track-fill {
+            position: absolute;
+            height: 100%;
+            background: rgba(241, 196, 15, 0.2);
+            left: 0;
+            top: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Developer Profile Card */
+        .developer-profile {
+            margin-top: auto; /* Pushes card to the bottom of the flex container */
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-left: 4px solid var(--neon-green);
+            border-radius: 6px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+
+        .developer-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            border: 2px solid #333;
+            object-fit: cover;
+            background-color: #111;
+        }
+
+        .developer-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .developer-role {
+            font-size: 0.65rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 2px;
+        }
+
+        .developer-name {
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: var(--neon-green);
+        }
+
+        /* Right Dashboard (Mission + Knobs + Actuators) */
+        #dashboard-panel {
+            grid-column: 3;
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            overflow-y: auto;
+        }
+
+        #mission-card {
+            background: rgba(0,0,0,0.4);
+            border-left: 4px solid var(--neon-blue);
+            padding: 12px;
+            border-radius: 0 6px 6px 0;
+            flex-shrink: 0;
+        }
+
+        #mission-title {
+            color: var(--neon-blue);
+            font-weight: bold;
+            font-size: 0.95rem;
+            margin-bottom: 4px;
+        }
+
+        #mission-desc {
+            font-size: 0.75rem;
+            color: #ccc;
+            line-height: 1.3;
+        }
+
+        .actuator-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .knob-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #333;
+        }
+
+        .knob-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: #999;
+        }
+
+        .knob-dial {
+            width: 45px;
+            height: 45px;
+            background: radial-gradient(circle, #444 0%, #111 100%);
+            border-radius: 50%;
+            border: 3px dashed var(--safety-yellow);
+            position: relative;
+            cursor: pointer;
+            transform: rotate(0deg);
+            transition: transform 0.1s linear;
+        }
+
+        .knob-dial::after {
+            content: '';
+            position: absolute;
+            top: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 4px;
+            height: 12px;
+            background: var(--neon-blue);
+            border-radius: 2px;
+        }
+
+        .btn-magnet {
+            grid-column: 1 / -1;
+            height: 45px;
+            background: linear-gradient(135deg, #c0392b 0%, #962d22 100%);
+            border: 2px solid #e74c3c;
+            border-radius: 6px;
+            color: white;
+            font-weight: bold;
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            box-shadow: inset 0 2px 5px rgba(255,255,255,0.3), 0 5px 15px rgba(0,0,0,0.4);
+            transition: all 0.1s ease;
+        }
+
+        .btn-magnet.active {
+            background: linear-gradient(135deg, #27ae60 0%, #1e8449 100%);
+            border-color: #2ecc71;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.6), 0 0 15px rgba(46, 204, 113, 0.4);
+        }
+
+        .btn-magnet:active {
+            transform: translateY(2px);
+        }
+
+        /* Screen overlays (Win/Lose) */
+        .modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+
+        .modal-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-content {
+            background: var(--dark-industrial);
+            border: 3px solid var(--safety-yellow);
+            border-radius: 12px;
+            padding: 30px;
+            width: 90%;
+            max-width: 450px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+        }
+
+        .modal-content h2 {
+            font-size: 1.8rem;
+            color: var(--safety-yellow);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .modal-content p {
+            color: #ddd;
+            margin-bottom: 20px;
+            line-height: 1.5;
+            font-size: 0.9rem;
+        }
+
+        .modal-btn {
+            background: var(--safety-yellow);
+            color: #000;
+            border: none;
+            padding: 10px 25px;
+            font-size: 0.95rem;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: background 0.2s;
+        }
+
+        .modal-btn:hover {
+            background: #f39c12;
+        }
+
+        #systems-log {
+            flex-grow: 1;
+            min-height: 80px;
+            background: #090d10;
+            border: 1px solid #222;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 0.7rem;
+            color: var(--neon-green);
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            border-left: 2px solid var(--neon-green);
+            padding-left: 5px;
+        }
+
+        /* Hide Scrollbar for cleaner look */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.3);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--safety-yellow);
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <header>
+            <div class="logo">TITAN SIM V1</div>
+            <div class="telemetry-deck">
+                <div class="telemetry-item">
+                    <span class="telemetry-label">Current Stage</span>
+                    <span class="telemetry-value" id="telemetry-stage">1 / 5</span>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telemetry-label">Load Weight</span>
+                    <span class="telemetry-value" id="telemetry-weight">2.4 Tons</span>
+                </div>
+                <div class="telemetry-item">
+                    <span class="telemetry-label">Wind Velocity</span>
+                    <span class="telemetry-value" id="telemetry-wind">0.0 km/h</span>
+                </div>
+            </div>
+        </header>
+
+        <section id="control-panel">
+            <h3 class="panel-title">Mechanical Actuators</h3>
+            
+            <div class="lever-group">
+                <div class="lever-label">
+                    <span>Slew Rotation (Jib)</span>
+                    <span id="val-slew">0°</span>
+                </div>
+                <div class="lever-wrap">
+                    <input type="range" id="input-slew" class="lever-slider" min="-180" max="180" value="0">
+                    <div class="lever-track-fill" id="fill-slew"></div>
+                </div>
+            </div>
+
+            <div class="lever-group">
+                <div class="lever-label">
+                    <span>Trolley Extension</span>
+                    <span id="val-trolley">5.0m</span>
+                </div>
+                <div class="lever-wrap">
+                    <input type="range" id="input-trolley" class="lever-slider" min="2" max="28" step="0.1" value="5">
+                    <div class="lever-track-fill" id="fill-trolley"></div>
+                </div>
+            </div>
+
+            <div class="lever-group">
+                <div class="lever-label">
+                    <span>Hoist Line Depth</span>
+                    <span id="val-hoist">10.0m</span>
+                </div>
+                <div class="lever-wrap">
+                    <input type="range" id="input-hoist" class="lever-slider" min="1" max="24" step="0.1" value="10">
+                    <div class="lever-track-fill" id="fill-hoist"></div>
+                </div>
+            </div>
+
+            <div class="developer-profile">
+                <img src="assets/profile.png" alt="Benedict C. de Jesus" class="developer-avatar" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'48\' height=\'48\'><rect width=\'48\' height=\'48\' fill=\'%23111\'/></svg>'">
+                <div class="developer-info">
+                    <span class="developer-role">Lead Developer</span>
+                    <span class="developer-name">Benedict C. de Jesus</span>
+                </div>
+            </div>
+        </section>
+
+        <section id="dashboard-panel">
+            <h3 class="panel-title">Operations Console</h3>
+            
+            <div id="mission-card">
+                <div id="mission-title">Initializing...</div>
+                <div id="mission-desc">Loading system configurations.</div>
+            </div>
+
+            <div class="actuator-grid">
+                <div class="knob-container">
+                    <span class="knob-label">Cam View</span>
+                    <div class="knob-dial" id="knob-cam" data-angle="0"></div>
+                    <span style="font-size: 0.65rem; color:#aaa;" id="txt-cam">Profile View</span>
+                </div>
+
+                <div class="knob-container">
+                    <span class="knob-label">Light Intensity</span>
+                    <div class="knob-dial" id="knob-light" data-angle="120" style="transform: rotate(120deg);"></div>
+                    <span style="font-size: 0.65rem; color:#aaa;" id="txt-light">High</span>
+                </div>
+
+                <button class="btn-magnet" id="btn-magnet-toggle">Engage Magnet</button>
+            </div>
+
+            <h3 class="panel-title">Telemetry & Systems Diagnostics</h3>
+            <div id="systems-log">
+                <div class="log-entry">System ready. Establish actuator coupling links.</div>
+            </div>
+        </section>
+    </div>
+
+    <div class="modal-overlay" id="modal-screen">
+        <div class="modal-content">
+            <h2 id="modal-headline">Challenge Cleared</h2>
+            <p id="modal-body">Excellent work structural crane operator. Systems check validates perfect load orientation specs.</p>
+            <button class="modal-btn" id="modal-action-btn">Proceed to Next Run</button>
+        </div>
+    </div>
+
+    <script>
+        // --- CHALLENGE / STAGE SPECIFICATIONS STATE MACHINE CONFIGS ---
+        const CHALLENGES = [
+            {
+                id: 1,
+                title: "Stage 1: Foundational Lift",
+                desc: "Basic induction deployment. Pick up the industrial safety container box and place it securely within the broad primary staging drop zone boundary accent.",
+                cargoPos: { x: 12, y: 1, z: 0 },
+                cargoSize: { w: 2, h: 2, d: 2 },
+                targetPos: { x: -10, y: 0.1, z: 10 },
+                targetRadius: 3.5,
+                wind: 0,
+                obstacle: null
+            },
+            {
+                id: 2,
+                title: "Stage 2: Precision Girder Anchor",
+                desc: "Load tracking dimensions change. Position a long steel girder beam onto a narrow specialized architectural platform pillar structural node.",
+                cargoPos: { x: 0, y: 1, z: -14 },
+                cargoSize: { w: 6, h: 1, d: 1 },
+                targetPos: { x: 14, y: 4, z: 8 },
+                targetRadius: 1.8,
+                wind: 0,
+                obstacle: null
+            },
+            {
+                id: 3,
+                title: "Stage 3: High Density Transposition",
+                desc: "Maneuver an unstable heavy concrete component capsule cleanly up, over, and through an structural perimeter wall obstruction asset.",
+                cargoPos: { x: -14, y: 1.5, z: -10 },
+                cargoSize: { w: 2.5, h: 3, d: 2.5 },
+                targetPos: { x: 12, y: 0.1, z: -12 },
+                targetRadius: 2.5,
+                wind: 4.2,
+                obstacle: { pos: { x: 0, y: 4, z: -11 }, size: { w: 4, h: 8, d: 12 } }
+            },
+            {
+                id: 4,
+                title: "Stage 4: Confined Space Placement",
+                desc: "Transfer a specialized supply unit down into a narrow structural opening bordered tightly by tall industrial high-rise framework scaffolds.",
+                cargoPos: { x: 15, y: 1, z: 15 },
+                cargoSize: { w: 2, h: 2, d: 2 },
+                targetPos: { x: -5, y: 0.1, z: -5 },
+                targetRadius: 1.5,
+                wind: 8.5,
+                obstacle: { pos: { x: -5, y: 8, z: 0 }, size: { w: 12, h: 16, d: 2 } }
+            },
+            {
+                id: 5,
+                title: "Stage 5: High Altitude Gale Force Sync",
+                desc: "Ultimate Operator Test. Deposit an unstable core directly onto the pinnacle of the central structural tower superstructure during dangerous variable crosswind gusts.",
+                cargoPos: { x: -15, y: 1, z: 15 },
+                cargoSize: { w: 2, h: 2, d: 2 },
+                targetPos: { x: 0, y: 12, z: 0 },
+                targetRadius: 1.2,
+                wind: 24.8,
+                obstacle: null
+            }
+        ];
+
+        // --- GLOBAL SIMULATOR STATE APPLICATION CONTROLLER CORE ---
+        let currentStageIdx = 0;
+        let isMagnetActive = false;
+        let isHoldingCargo = false;
+        let currentCameraMode = 0; // 0: Profile View, 1: Overhead View, 2: Operator Cabin View
+        
+        // Kinematic state values tracking
+        let stateSlew = 0;
+        let stateTrolley = 5;
+        let stateHoist = 10;
+        
+        // ThreeJS Render Global Declarations
+        let scene, camera, renderer, clock;
+        let craneTower, craneJib, craneTrolley, craneCable, craneHook;
+        let cargoMesh, targetZoneMesh, activeObstacleMesh;
+        let ambientLight, directionalLight, spotLight;
+
+        // --- MATH UTILITIES & COLLISION RUNTIME MATRIX CORRECTIONS ---
+        function appendLog(text) {
+            const container = document.getElementById('systems-log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerText = `[${new Date().toLocaleTimeString()}] ${text}`;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // --- APP ENGINE INITIALIZATION ENTRY POINT ---
+        function initEngine() {
+            clock = new THREE.Clock();
+            
+            // Build Base Framework Scene Graph Context
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a1118);
+            scene.fog = new THREE.FogExp2(0x0a1118, 0.015);
+
+            // Establish Viewport Projection Matrices
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            // Setup Specialized High Performance Antialiased Render Pipelines
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.0;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Populate Environmental Lighting Assets
+            setupLighting();
+
+            // Construct Industrial Infrastructure Site Map Grids
+            setupEnvironment();
+
+            // Assemble Procedural Crane Hierarchy Model Configurations
+            buildCraneSuperstructure();
+
+            // Load Challenge Profiles System
+            loadChallengeStage(currentStageIdx);
+
+            // Initialize DOM Element Reactive Control Linkages
+            bindUserInterfaceEvents();
+
+            // Fire Structural Frame Event Dispatch Cycle Loops
+            window.addEventListener('resize', onWindowResize, false);
+            animateLoop();
+            
+            appendLog("Simulation Core Engine Engaged Successfully.");
+        }
+
+        function setupLighting() {
+            ambientLight = new THREE.AmbientLight(0x223344, 1.2);
+            scene.add(ambientLight);
+
+            directionalLight = new THREE.DirectionalLight(0xffffff, 1.8);
+            directionalLight.position.set(40, 60, 20);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 150;
+            const d = 40;
+            directionalLight.shadow.camera.left = -d;
+            directionalLight.shadow.camera.right = d;
+            directionalLight.shadow.camera.top = d;
+            directionalLight.shadow.camera.bottom = -d;
+            directionalLight.shadow.bias = -0.0005;
+            scene.add(directionalLight);
+
+            // Auxiliary Spot Segment Light Target Tracking Hook Coordinates
+            spotLight = new THREE.SpotLight(0x00d2d3, 5, 40, Math.PI / 6, 0.5, 1);
+            spotLight.castShadow = true;
+            scene.add(spotLight);
+        }
+
+        function setupEnvironment() {
+            // Expanded Ground Plane so horizon doesn't cut off abruptly
+            const floorGeo = new THREE.PlaneGeometry(800, 800);
+            const floorMat = new THREE.MeshStandardMaterial({ 
+                color: 0x141d24, 
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Expanded Structural Grid Sub-system Overlay
+            const gridHelper = new THREE.GridHelper(800, 100, 0xf1c40f, 0x223344);
+            gridHelper.position.y = 0.01;
+            scene.add(gridHelper);
+
+            // Distant Industrial Boundary Backdrops Visual Mock elements
+            for (let i = 0; i < 12; i++) {
+                const bGeo = new THREE.BoxGeometry(10 + Math.random()*15, 20 + Math.random()*40, 10 + Math.random()*15);
+                const bMat = new THREE.MeshStandardMaterial({ color: 0x0d161f, roughness: 0.9 });
+                const bMesh = new THREE.Mesh(bGeo, bMat);
+                let angle = (i / 12) * Math.PI * 2;
+                bMesh.position.set(Math.cos(angle) * 70, bGeo.parameters.height / 2, Math.sin(angle) * 70);
+                bMesh.castShadow = true;
+                bMesh.receiveShadow = true;
+                scene.add(bMesh);
+            }
+        }
+
+        function buildCraneSuperstructure() {
+            // High-Visibility Striped Construction Materials Formula Base Patterns
+            const steelMat = new THREE.MeshStandardMaterial({ color: 0x34495e, roughness: 0.4, metalness: 0.7 });
+            const yellowWarningMat = new THREE.MeshStandardMaterial({ color: 0xf1c40f, roughness: 0.5, metalness: 0.4 });
+            const darkMetalMat = new THREE.MeshStandardMaterial({ color: 0x1e272e, roughness: 0.3, metalness: 0.8 });
+
+            // Base Concrete Anchor Foundation Pillar Block
+            const baseGeo = new THREE.BoxGeometry(6, 2, 6);
+            const baseMesh = new THREE.Mesh(baseGeo, steelMat);
+            baseMesh.position.y = 1;
+            baseMesh.receiveShadow = true;
+            scene.add(baseMesh);
+
+            // Main Vertical Tower Mast Core Structure Assembly
+            craneTower = new THREE.Group();
+            craneTower.position.set(0, 2, 0);
+            
+            const mastGeo = new THREE.BoxGeometry(1.6, 26, 1.6);
+            const mastMesh = new THREE.Mesh(mastGeo, yellowWarningMat);
+            mastMesh.position.y = 13;
+            mastMesh.castShadow = true;
+            mastMesh.receiveShadow = true;
+            craneTower.add(mastMesh);
+            
+            // Decorative Ladder Truss Crossings
+            for(let h=2; h<26; h+=4) {
+                const trussGeo = new THREE.BoxGeometry(2, 0.2, 2);
+                const truss = new THREE.Mesh(trussGeo, darkMetalMat);
+                truss.position.y = h;
+                craneTower.add(truss);
+            }
+            scene.add(craneTower);
+
+            // Horizontal Slewing Jib Arm Unit Construction Array Elements
+            craneJib = new THREE.Group();
+            craneJib.position.y = 26; // Seat height on tower apex mounts
+            
+            // Operator Control Cabin Mesh Integration
+            const cabinGeo = new THREE.BoxGeometry(1.8, 2, 2.2);
+            const cabinMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.9 });
+            const cabinMesh = new THREE.Mesh(cabinGeo, cabinMat);
+            cabinMesh.position.set(1.5, -1, 1.2);
+            craneJib.add(cabinMesh);
+
+            // Long Front Load Jib Lattice Structure Extension Vector
+            const mainJibGeo = new THREE.BoxGeometry(32, 1.2, 1.2);
+            const mainJibMesh = new THREE.Mesh(mainJibGeo, yellowWarningMat);
+            mainJibMesh.position.set(14, 0.6, 0); // Extended forwards along standard coordinate spectrum
+            mainJibMesh.castShadow = true;
+            craneJib.add(mainJibMesh);
+
+            // Short Counter-Jib Balance Component Block
+            const counterJibGeo = new THREE.BoxGeometry(10, 1.2, 1.2);
+            const counterJibMesh = new THREE.Mesh(counterJibGeo, steelMat);
+            counterJibMesh.position.set(-5, 0.6, 0);
+            craneJib.add(counterJibMesh);
+
+            // Heavy Mass Counterweight Component Additions
+            const weightGeo = new THREE.BoxGeometry(3, 2, 2);
+            const weightMesh = new THREE.Mesh(weightGeo, darkMetalMat);
+            weightMesh.position.set(-8, 1, 0);
+            craneJib.add(weightMesh);
+
+            craneTower.add(craneJib);
+
+            // Mobile Traversing Trolley Structural Attachment Unit Elements
+            craneTrolley = new THREE.Group();
+            const trolleyPlatformGeo = new THREE.BoxGeometry(1.5, 0.4, 1.6);
+            const trolleyMesh = new THREE.Mesh(trolleyPlatformGeo, darkMetalMat);
+            trolleyMesh.position.y = -0.2;
+            craneTrolley.add(trolleyMesh);
+            craneJib.add(craneTrolley);
+
+            // Dynamic Cable Lines Systems Elements Mapping
+            const cableGeo = new THREE.CylinderGeometry(0.04, 0.04, 1, 6);
+            const cableMat = new THREE.MeshBasicMaterial({ color: 0x2c3e50 });
+            craneCable = new THREE.Mesh(cableGeo, cableMat);
+            craneTrolley.add(craneCable);
+
+            // Weighted Electro-Magnet Hook End-Effector Coupling Assemblages
+            craneHook = new THREE.Group();
+            
+            const blockGeo = new THREE.CylinderGeometry(0.6, 0.8, 0.5, 12);
+            const blockMesh = new THREE.Mesh(blockGeo, darkMetalMat);
+            blockMesh.castShadow = true;
+            craneHook.add(blockMesh);
+
+            // Visible Soft Glow Light Component Under Emitter Plate Array Facets
+            const magnetGlowGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.1, 12);
+            this.magnetGlowMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const glowMesh = new THREE.Mesh(magnetGlowGeo, this.magnetGlowMat);
+            glowMesh.position.y = -0.26;
+            craneHook.add(glowMesh);
+
+            scene.add(craneHook);
+        }
+
+        // --- LIFE-CYCLE STAGE CONFIGURATION UPDATER PROCEDURES ---
+        function loadChallengeStage(idx) {
+            const spec = CHALLENGES[idx];
+            
+            // Sync Core Telemetry readouts DOM Nodes Interface
+            document.getElementById('telemetry-stage').innerText = `${spec.id} / 5`;
+            document.getElementById('telemetry-wind').innerText = `${spec.wind.toFixed(1)} km/h`;
+            document.getElementById('mission-title').innerText = spec.title;
+            document.getElementById('mission-desc').innerText = spec.desc;
+
+            // Purge existing runtime active target models configurations safely
+            if (cargoMesh) scene.remove(cargoMesh);
+            if (targetZoneMesh) scene.remove(targetZoneMesh);
+            if (activeObstacleMesh) scene.remove(activeObstacleMesh);
+
+            // Rebuild Cargo System Object Data Target Matrices Block
+            const cargoGeo = new THREE.BoxGeometry(spec.cargoSize.w, spec.cargoSize.h, spec.cargoSize.d);
+            let cargoColor = 0xe67e22; // Default Safety Orange Cargo Container
+            if(idx === 1) cargoColor = 0x3498db; // Steel Beam Blue Profiles Tint
+            if(idx === 2) cargoColor = 0x9b59b6; // Dense Component Purple
+            
+            const cargoMat = new THREE.MeshStandardMaterial({ color: cargoColor, roughness: 0.5, metalness: 0.5 });
+            cargoMesh = new THREE.Mesh(cargoGeo, cargoMat);
+            cargoMesh.position.set(spec.cargoPos.x, spec.cargoPos.y, spec.cargoPos.z);
+            cargoMesh.castShadow = true;
+            cargoMesh.receiveShadow = true;
+            scene.add(cargoMesh);
+
+            // Custom Dynamic Formatting Weights Parameters Telemetry Displays
+            const computedWeight = (spec.cargoSize.w * spec.cargoSize.h * spec.cargoSize.d * 0.4).toFixed(1);
+            document.getElementById('telemetry-weight').innerText = `${computedWeight} Tons`;
+
+            // Setup Target Boundary Area Zone Mesh Geometries Visual indicators
+            const targetRingGeo = new THREE.RingGeometry(spec.targetRadius - 0.2, spec.targetRadius, 32);
+            const targetRingMat = new THREE.MeshBasicMaterial({ color: 0x1dd1a1, side: THREE.DoubleSide });
+            targetZoneMesh = new THREE.Mesh(targetRingGeo, targetRingMat);
+            targetZoneMesh.rotation.x = Math.PI / 2;
+            targetZoneMesh.position.set(spec.targetPos.x, spec.targetPos.y, spec.targetPos.z);
+            scene.add(targetZoneMesh);
+
+            // Add inner semi translucent fill floor targets plate meshes arrays
+            const targetFillGeo = new THREE.CircleGeometry(spec.targetRadius, 32);
+            const targetFillMat = new THREE.MeshBasicMaterial({ color: 0x1dd1a1, transparent: true, opacity: 0.15 });
+            const targetFill = new THREE.Mesh(targetFillGeo, targetFillMat);
+            targetFill.rotation.x = -Math.PI / 2;
+            targetZoneMesh.add(targetFill);
+
+            // Conditional rendering logic supporting structural obstacle installations maps
+            if (spec.obstacle) {
+                // Support multi layer procedural custom architectural target heights mappings profiles directly
+                if (idx === 4) { 
+                    // Special High Altitude Drop Column Construction Node Tower Mounts Base Element Block
+                    const towerPodiumGeo = new THREE.BoxGeometry(3, 12, 3);
+                    const towerPodiumMat = new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 0.7 });
+                    activeObstacleMesh = new THREE.Mesh(towerPodiumGeo, towerPodiumMat);
+                    activeObstacleMesh.position.set(spec.targetPos.x, 6, spec.targetPos.z);
+                    activeObstacleMesh.castShadow = true;
+                    activeObstacleMesh.receiveShadow = true;
+                    scene.add(activeObstacleMesh);
+                } else {
+                    const obsGeo = new THREE.BoxGeometry(spec.obstacle.size.w, spec.obstacle.size.h, spec.obstacle.size.d);
+                    const obsMat = new THREE.MeshStandardMaterial({ color: 0x485460, roughness: 0.9 });
+                    activeObstacleMesh = new THREE.Mesh(obsGeo, obsMat);
+                    activeObstacleMesh.position.set(spec.obstacle.pos.x, spec.obstacle.pos.y, spec.obstacle.pos.z);
+                    activeObstacleMesh.castShadow = true;
+                    activeObstacleMesh.receiveShadow = true;
+                    scene.add(activeObstacleMesh);
+                }
+            }
+
+            // Force operational resets decoupling attached systems elements cleanly
+            isHoldingCargo = false;
+            isMagnetActive = false;
+            document.getElementById('btn-magnet-toggle').classList.remove('active');
+            document.getElementById('btn-magnet-toggle').innerText = "Engage Magnet";
+            this.magnetGlowMat.color.setHex(0xff0000);
+
+            // Command interface tracking system telemetry history arrays logs
+            appendLog(`Transition Complete. Active Task Profile: Load Run Stage #${spec.id}`);
+        }
+
+        // --- CONTROLS DECK UI COMPONENT HARDWARE INTERFACES OVERLAYS ---
+        function bindUserInterfaceEvents() {
+            // Lever 1: Slew Axis Input Interceptor Mapping
+            const inputSlew = document.getElementById('input-slew');
+            inputSlew.addEventListener('input', (e) => {
+                stateSlew = parseFloat(e.target.value) * (Math.PI / 180);
+                document.getElementById('val-slew').innerText = `${e.target.value}°`;
+                document.getElementById('fill-slew').style.width = `${((parseFloat(e.target.value) + 180) / 360) * 100}%`;
+            });
+
+            // Lever 2: Trolley Axis Range Extension Interceptor Mapping
+            const inputTrolley = document.getElementById('input-trolley');
+            inputTrolley.addEventListener('input', (e) => {
+                stateTrolley = parseFloat(e.target.value);
+                document.getElementById('val-trolley').innerText = `${stateTrolley.toFixed(1)}m`;
+                document.getElementById('fill-trolley').style.width = `${((stateTrolley - 2) / 26) * 100}%`;
+            });
+
+            // Lever 3: Hoist Height Velocity Cable Deployment Ranges Interceptor
+            const inputHoist = document.getElementById('input-hoist');
+            inputHoist.addEventListener('input', (e) => {
+                stateHoist = parseFloat(e.target.value);
+                document.getElementById('val-hoist').innerText = `${stateHoist.toFixed(1)}m`;
+                document.getElementById('fill-hoist').style.width = `${((stateHoist - 1) / 23) * 100}%`;
+            });
+
+            // Coupling Actuator Handle: Magnetic Engagement Dispatches Button Matrix Linkages
+            const btnMagnet = document.getElementById('btn-magnet-toggle');
+            btnMagnet.addEventListener('click', () => {
+                isMagnetActive = !isMagnetActive;
+                if (isMagnetActive) {
+                    btnMagnet.classList.add('active');
+                    btnMagnet.innerText = "Disengage Magnet";
+                    this.magnetGlowMat.color.setHex(0x00ff00); // Visual Indicator state switch green glow active node lines
+                    appendLog("Electromagnetic Coupler Flux Circuits Charged.");
+                    
+                    // Evaluates instant attachment proximity check boundaries rules metrics systems
+                    checkMagneticCouplingAttachment();
+                } else {
+                    btnMagnet.classList.remove('active');
+                    btnMagnet.innerText = "Engage Magnet";
+                    this.magnetGlowMat.color.setHex(0xff0000);
+                    appendLog("Magnetic Core Ground Field Discharged.");
+                    
+                    if (isHoldingCargo) {
+                        isHoldingCargo = false;
+                        appendLog("Load decoupling released onto coordinates registry.");
+                        checkStageTargetResolutionCriteria();
+                    }
+                }
+            });
+
+            // Rotary Switch Knob 1: Camera
+            const knobCam = document.getElementById('knob-cam');
+            knobCam.addEventListener('click', () => {
+                currentCameraMode = (currentCameraMode + 1) % 3;
+                let angleDeg = currentCameraMode * 120;
+                knobCam.style.transform = `rotate(${angleDeg}deg)`;
+                
+                const labels = ["Profile View", "Overhead View", "Operator Cabin View"];
+                document.getElementById('txt-cam').innerText = labels[currentCameraMode];
+                appendLog(`Routing Optical Feed Source -> ${labels[currentCameraMode]}`);
+            });
+
+            // Rotary Switch Knob 2: Light Intensity Fix
+            const knobLight = document.getElementById('knob-light');
+            let currentLightMode = 2; // Starts High based on CSS 120deg setup
+            
+            knobLight.addEventListener('click', () => {
+                currentLightMode = (currentLightMode + 1) % 3;
+                
+                let angleDeg = currentLightMode * 60; // Steps: 0, 60, 120
+                knobLight.style.transform = `rotate(${angleDeg}deg)`;
+                
+                const labels = ["Off", "Medium", "High"];
+                document.getElementById('txt-light').innerText = labels[currentLightMode];
+                
+                if (currentLightMode === 0) {
+                    spotLight.intensity = 0;
+                    appendLog("Aux Spot Intensity -> OFF");
+                } else if (currentLightMode === 1) {
+                    spotLight.intensity = 2.5;
+                    appendLog("Aux Spot Intensity -> MEDIUM");
+                } else {
+                    spotLight.intensity = 5;
+                    appendLog("Aux Spot Intensity -> HIGH");
+                }
+            });
+
+            // Intermission Screen Action Triggers Pipeline Framework State Engines Routing
+            document.getElementById('modal-action-btn').addEventListener('click', () => {
+                document.getElementById('modal-screen').classList.remove('visible');
+                if (currentStageIdx < CHALLENGES.length) {
+                    loadChallengeStage(currentStageIdx);
+                } else {
+                    // All levels complete victory lifecycle end system loops loopbacks state arrays endpoints resets
+                    currentStageIdx = 0;
+                    loadChallengeStage(currentStageIdx);
+                }
+            });
+            
+            // Seed initial track lines fills directly profiles views ranges parameters settings values load
+            inputSlew.dispatchEvent(new Event('input'));
+            inputTrolley.dispatchEvent(new Event('input'));
+            inputHoist.dispatchEvent(new Event('input'));
+        }
+
+        function checkMagneticCouplingAttachment() {
+            if (isHoldingCargo) return;
+
+            // Compute exact absolute coordinates transformations metrics matching hook assemblies parameters zones
+            const hookPos = new THREE.Vector3();
+            craneHook.getWorldPosition(hookPos);
+            // Offset downward to bottom pole of electromagnetic circular structural plate base interface element array
+            hookPos.y -= 0.3; 
+
+            const cargoPos = cargoMesh.position;
+            const spec = CHALLENGES[currentStageIdx];
+
+            // Resolve raw delta distance matrices metrics vectors directly maps positions variables properties
+            let dx = hookPos.x - cargoPos.x;
+            let dy = hookPos.y - (cargoPos.y + spec.cargoSize.h / 2); // Core top face alignment check limits boundaries
+            let dz = hookPos.z - cargoPos.z;
+            let rangeXZ = Math.sqrt(dx*dx + dz*dz);
+
+            if (rangeXZ < 1.8 && Math.abs(dy) < 0.6) {
+                isHoldingCargo = true;
+                appendLog("Load Matrix Target Match Lock. Coupling Matrix Secure.");
+            } else {
+                appendLog("Coupling Fault: Hook alignment out of proximity spec variance tolerances.");
+                // Retract operational toggle states systematically directly safely
+                isMagnetActive = false;
+                const btnMagnet = document.getElementById('btn-magnet-toggle');
+                btnMagnet.classList.remove('active');
+                btnMagnet.innerText = "Engage Magnet";
+                this.magnetGlowMat.color.setHex(0xff0000);
+            }
+        }
+
+        function checkStageTargetResolutionCriteria() {
+            const spec = CHALLENGES[currentStageIdx];
+            const cargoPos = cargoMesh.position;
+
+            // Target alignment check metrics parameters mappings values vectors evaluations
+            let dx = cargoPos.x - spec.targetPos.x;
+            let dz = cargoPos.z - spec.targetPos.z;
+            let distanceToTarget = Math.sqrt(dx*dx + dz*dz);
+
+            // Height platform correction matrix logic layers mappings variables arrays directly profiles
+            let exactTargetHeight = spec.targetPos.y;
+            if (currentStageIdx === 1) exactTargetHeight = 4.0; // Top structural surface plateau elevation match parameters checks
+            if (currentStageIdx === 4) exactTargetHeight = 12.0; // Pinnacle core tall structural column height apex checks
+
+            let elevationDelta = Math.abs(cargoPos.y - (exactTargetHeight + spec.cargoSize.h / 2));
+
+            if (distanceToTarget <= spec.targetRadius && elevationDelta < 1.0) {
+                // Success criteria resolution cleared triggered execution loops sequence states dispatches
+                setTimeout(() => {
+                    executeStageClearanceTransitionSequence();
+                }, 800);
+            } else {
+                appendLog(`Uncouple diagnostic check: Target alignment offset validation failed. Dist: ${distanceToTarget.toFixed(1)}m, Elev-Delta: ${elevationDelta.toFixed(1)}m`);
+            }
+        }
+
+        function executeStageClearanceTransitionSequence() {
+            currentStageIdx++;
+            const modal = document.getElementById('modal-screen');
+            const headline = document.getElementById('modal-headline');
+            const bodyTxt = document.getElementById('modal-body');
+            const actionBtn = document.getElementById('modal-action-btn');
+
+            if (currentStageIdx < CHALLENGES.length) {
+                headline.innerText = "Run Challenge Cleared";
+                bodyTxt.innerText = `Operational parameters verified within target zone tolerance limits. Telemetry validates system structural alignments. Proceed onto Stage Run Node Profile #${currentStageIdx + 1}.`;
+                actionBtn.innerText = "Load Next Run Assignment";
+            } else {
+                headline.innerText = "All Runs Mastered";
+                bodyTxt.innerText = "Incredible performance. Master grade operations rating confirmed. All critical structural inventory modules successfully dispatched without system failures.";
+                actionBtn.innerText = "Restart Simulator Core";
+            }
+            modal.classList.add('visible');
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- MATH REVOLUTION ROTATIONAL MATRIX KINEMATIC RUNTIME SOLVERS ---
+        function animateLoop() {
+            requestAnimationFrame(animateLoop);
+
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            // 1. Resolve Kinematic Cranes Node Hierarchies Mappings Matrix transformations transforms structures directly
+            craneTower.rotation.y = stateSlew;
+            craneTrolley.position.x = stateTrolley;
+
+            // Scaling procedural dynamic variables sizes visual line transformations models lengths updates
+            craneCable.scale.y = stateHoist;
+            craneCable.position.y = -stateHoist / 2;
+
+            // Compute exact absolute coordinates transformations metrics matching hook models components maps
+            let localHookOffset = new THREE.Vector3(stateTrolley, -stateHoist, 0);
+            // Apply crane slew global coordinate frame transformations systems structures matrices rotations
+            localHookOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), stateSlew);
+            
+            // Resolve world origin offset coordinate transformations matching towers mounts allocations global components coordinates
+            let resolvedHookWorldPos = new THREE.Vector3(0, 26, 0).add(localHookOffset);
+
+            // 2. Inject Dynamic Atmospheric Wind Simulation Turbulence Layers Profiles
+            const spec = CHALLENGES[currentStageIdx];
+            if (spec.wind > 0) {
+                // Sinusoidal wind sway calculations injecting physical variance profiles anomalies vectors
+                let windSwayX = Math.sin(time * 1.5) * (spec.wind * 0.04);
+                let windSwayZ = Math.cos(time * 1.1) * (spec.wind * 0.03);
+                
+                resolvedHookWorldPos.x += windSwayX;
+                resolvedHookWorldPos.z += windSwayZ;
+            }
+
+            // Bind calculations position coordinates directly onto visual meshes parameters elements data models
+            craneHook.position.copy(resolvedHookWorldPos);
+
+            // 3. Dynamic Structural Physics States Resolution Engine Pipeline Transformations Mappings Assemblies
+            if (isHoldingCargo) {
+                // Affix cargo matrix transformations variables matching bottom face boundaries elements anchors directly
+                cargoMesh.position.copy(resolvedHookWorldPos);
+                cargoMesh.position.y -= (spec.cargoSize.h / 2);
+                cargoMesh.rotation.y = stateSlew; // Cargo aligns with structural hook alignment rotation frames mappings profiles
+            } else {
+                // Gravity Simulation fallback layer checking foundation grid boundary stops parameters limits
+                let targetFloorHeight = spec.cargoSize.h / 2;
+                
+                // Specific structural elevations tracking overrides configurations parameters profiles patterns logic
+                if (currentStageIdx === 1) {
+                    // Check if resting flat over structural elevated pillar platform element bounds matrices profiles zones
+                    let dx = cargoMesh.position.x - spec.targetPos.x;
+                    let dz = cargoMesh.position.z - spec.targetPos.z;
+                    if (Math.sqrt(dx*dx + dz*dz) <= spec.targetRadius) {
+                        targetFloorHeight = 4.0 + (spec.cargoSize.h / 2);
+                    }
+                }
+                if (currentStageIdx === 4) {
+                    // High altitude tower top column pinnacle touchdown matching targets checks coordinates bounds
+                    let dx = cargoMesh.position.x - spec.targetPos.x;
+                    let dz = cargoMesh.position.z - spec.targetPos.z;
+                    if (Math.sqrt(dx*dx + dz*dz) <= spec.targetRadius) {
+                        targetFloorHeight = 12.0 + (spec.cargoSize.h / 2);
+                    }
+                }
+
+                if (cargoMesh.position.y > targetFloorHeight) {
+                    cargoMesh.position.y -= delta * 9.8; // Apply basic physical gravitational terminal acceleration constants fallback layers
+                    if (cargoMesh.position.y < targetFloorHeight) {
+                        cargoMesh.position.y = targetFloorHeight;
+                    }
+                }
+            }
+
+            // 4. Basic Analytical Static Box Bounding Collision Engine Layer Interceptors
+            evaluateObstacleCollisionMatricesIntersections();
+
+            // 5. Update Dynamic Operational Auxiliary Spot Tracking Illuminators Profiles Configurations
+            spotLight.position.copy(resolvedHookWorldPos);
+            spotLight.position.y += 4;
+            spotLight.target = craneHook;
+
+            // 6. Camera Dynamic Matrix Transformations Vector Configurations Handlers Pipelines Switching
+            executeCameraViewPipelinePositioningUpdates();
+
+            // Render Output Dispatches Buffer Execution Cycles
+            renderer.render(scene, camera);
+        }
+
+        function evaluateObstacleCollisionMatricesIntersections() {
+            const spec = CHALLENGES[currentStageIdx];
+            if (!spec.obstacle || !activeObstacleMesh) return;
+
+            // Resolve current runtime standard axis aligned spatial boundary dimensions frames models properties box variables
+            const cargoBox = new THREE.Box3().setFromObject(cargoMesh);
+            const obsBox = new THREE.Box3().setFromObject(activeObstacleMesh);
+
+            // Evaluate intersection metrics bounds parameters updates matrices conditions outputs transformations elements
+            if (cargoBox.intersectsBox(obsBox)) {
+                appendLog("WARNING: Structural Collision Detected. Safety Interlock Circuit Active.");
+                
+                // Kinetic impact pushback physical calculations approximation algorithms displacements mapping models formulas
+                if (isHoldingCargo) {
+                    // Force complete separation dropping load asset to avoid severe structural crane framework failure configurations variables
+                    isHoldingCargo = false;
+                    isMagnetActive = false;
+                    
+                    const btnMagnet = document.getElementById('btn-magnet-toggle');
+                    btnMagnet.classList.remove('active');
+                    btnMagnet.innerText = "Engage Magnet";
+                    this.magnetGlowMat.color.setHex(0xff0000);
+
+                    // Deflect coordinate models allocations tracking indices vectors configurations positions offsets values safely
+                    cargoMesh.position.y -= 0.5;
+                    cargoMesh.position.x += (cargoMesh.position.x > spec.obstacle.pos.x ? 1.5 : -1.5);
+                }
+            }
+        }
+
+        function executeCameraViewPipelinePositioningUpdates() {
+            const hookPos = new THREE.Vector3();
+            craneHook.getWorldPosition(hookPos);
+
+            if (currentCameraMode === 0) {
+                // Profile View: Pulled back and targeting higher up the mast to push the crane lower on screen
+                camera.position.set(45, 20, 50);
+                camera.lookAt(0, 16, 0); 
+            } 
+            else if (currentCameraMode === 1) {
+                // Overhead View: Centered directly over the hook, pulled back slightly
+                camera.position.set(hookPos.x, 50, hookPos.z + 5);
+                camera.lookAt(hookPos.x, 0, hookPos.z);
+            } 
+            else if (currentCameraMode === 2) {
+                // Operator Command Cabin View: looking down the jib towards the hook
+                let cabinRelativeOffset = new THREE.Vector3(2, 24, 2);
+                cabinRelativeOffset.applyAxisAngle(new THREE.Vector3(0,1,0), stateSlew);
+                
+                camera.position.copy(cabinRelativeOffset);
+                let cabinLookTarget = new THREE.Vector3(hookPos.x, hookPos.y - 8, hookPos.z);
+                camera.lookAt(cabinLookTarget);
+            }
+        }
+
+        // Run engine launch sequence procedures allocations instantly configurations triggers lines bounds entries frameworks
+        window.onload = () => {
+            initEngine();
+        };
+    </script>
+</body>
+</html>
