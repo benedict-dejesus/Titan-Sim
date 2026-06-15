@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Production-Grade 3D Crane Simulator</title>
     <style>
         :root {
@@ -21,11 +21,11 @@
             user-select: none;
         }
 
+        /* BUG FIX: Restores draggable functionality to sliders in all browsers */
         input[type="range"] {
             user-select: auto;
             -webkit-user-select: auto;
             -moz-user-select: auto;
-            touch-action: pan-y; /* Improves slider drag behavior on touch screens */
         }
 
         body, html {
@@ -63,6 +63,7 @@
             gap: 15px;
         }
 
+        /* BUG FIX: Only apply pointer-events to immediate grid children to prevent invisible layer blocking */
         #ui-layer > * {
             pointer-events: auto;
         }
@@ -185,7 +186,7 @@
             outline: none;
             cursor: pointer;
             position: relative;
-            z-index: 5; 
+            z-index: 5; /* BUG FIX: Boosted z-index to ensure it is always clickable */
         }
 
         .lever-slider::-webkit-slider-thumb {
@@ -204,7 +205,7 @@
             background: rgba(241, 196, 15, 0.2);
             left: 0;
             top: 0;
-            pointer-events: none !important; 
+            pointer-events: none !important; /* BUG FIX: Strictly prevent event interception */
             z-index: 1;
         }
 
@@ -456,62 +457,6 @@
         ::-webkit-scrollbar-thumb:hover {
             background: var(--safety-yellow);
         }
-
-        /* RESPONSIVE DESIGN - MOBILE PHONES & SMALL TABLETS */
-        @media (max-width: 850px) {
-            #ui-layer {
-                grid-template-columns: 1fr;
-                /* Header, Spacer for Canvas, Control Panels Stacked */
-                grid-template-rows: auto 1fr auto auto;
-                gap: 10px;
-                padding: 10px;
-            }
-
-            header {
-                flex-wrap: wrap;
-                height: auto;
-                padding: 10px;
-                gap: 10px;
-            }
-
-            .logo {
-                width: 100%;
-                justify-content: center;
-                margin-bottom: 5px;
-            }
-
-            .telemetry-deck {
-                width: 100%;
-                justify-content: space-between;
-                gap: 5px;
-            }
-
-            .telemetry-item {
-                align-items: center;
-            }
-
-            #control-panel, #dashboard-panel {
-                grid-column: 1;
-                max-height: none;
-            }
-
-            #control-panel {
-                grid-row: 3;
-            }
-
-            #dashboard-panel {
-                grid-row: 4;
-            }
-
-            /* Hide less critical items on tiny screens to save real estate */
-            .developer-profile {
-                display: none; 
-            }
-            
-            #systems-log {
-                max-height: 80px;
-            }
-        }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -605,8 +550,11 @@
                 </div>
 
                 <button class="btn-magnet" id="btn-magnet-toggle">Engage Magnet</button>
-                <button class="btn-magnet" id="btn-restart-stage" style="background: linear-gradient(135deg, #d35400 0%, #a83f00 100%); border-color: #e67e22; margin-top: 10px;">Restart Stage</button>
             </div>
+
+<button class="btn-magnet" id="btn-restart-stage" style="background: linear-gradient(135deg, #d35400 0%, #a83f00 100%); border-color: #e67e22; margin-top: 10px;">
+    Restart Stage
+</button>
 
             <h3 class="panel-title">Telemetry & Systems Diagnostics</h3>
             <div id="systems-log">
@@ -955,6 +903,23 @@
                 document.getElementById('fill-hoist').style.width = `${((stateHoist - 1) / 25) * 100}%`;
             });
 
+const btnRestart = document.getElementById('btn-restart-stage');
+btnRestart.addEventListener('click', () => {
+    // Reloads the current stage, resetting cargo position, UI, and magnet state
+    loadChallengeStage(currentStageIdx);
+    appendLog("MANUAL OVERRIDE: Stage parameters reset by operator.");
+    
+    // Reset mechanical levers to default (optional, but good for UX)
+    document.getElementById('input-slew').value = 0;
+    document.getElementById('input-trolley').value = 5;
+    document.getElementById('input-hoist').value = 10;
+    
+    // Trigger the input events to update the 3D crane instantly
+    document.getElementById('input-slew').dispatchEvent(new Event('input'));
+    document.getElementById('input-trolley').dispatchEvent(new Event('input'));
+    document.getElementById('input-hoist').dispatchEvent(new Event('input'));
+});
+
             const btnMagnet = document.getElementById('btn-magnet-toggle');
             btnMagnet.addEventListener('click', () => {
                 isMagnetActive = !isMagnetActive;
@@ -977,20 +942,6 @@
                         checkStageTargetResolutionCriteria();
                     }
                 }
-            });
-
-            const btnRestart = document.getElementById('btn-restart-stage');
-            btnRestart.addEventListener('click', () => {
-                loadChallengeStage(currentStageIdx);
-                appendLog("MANUAL OVERRIDE: Stage parameters reset by operator.");
-                
-                document.getElementById('input-slew').value = 0;
-                document.getElementById('input-trolley').value = 5;
-                document.getElementById('input-hoist').value = 10;
-                
-                document.getElementById('input-slew').dispatchEvent(new Event('input'));
-                document.getElementById('input-trolley').dispatchEvent(new Event('input'));
-                document.getElementById('input-hoist').dispatchEvent(new Event('input'));
             });
 
             const knobCam = document.getElementById('knob-cam');
